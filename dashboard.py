@@ -4,51 +4,52 @@ import psycopg2
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
+# ─── Load environment variables ───
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-PORT = int(os.getenv("PORT", 8000))  # <- Add this line!
 
-# Connect to your PostgreSQL database
-@st.cache_data
+# ─── Database Connection ───
+@st.cache_data(ttl=600)  # cache the data for 10 minutes
 def load_data():
-    conn = psycopg2.connect(DATABASE_URL)
-    query = """
-        SELECT 
-            insider,
-            issuer,
-            transactiondate,
-            transactioncode,
-            securitytitle,
-            shares,
-            price
-        FROM transactions
-        ORDER BY transactiondate DESC
-        LIMIT 100
-    """
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        query = """
+            SELECT 
+                insider_id AS insider,    -- Fix applied here
+                issuer,
+                transactiondate,
+                transactioncode,
+                securitytitle,
+                shares,
+                price
+            FROM transactions
+            ORDER BY transactiondate DESC
+            LIMIT 100
+        """
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        return df
+    except Exception as e:
+        st.error(f"Database connection or query failed: {e}")
+        return pd.DataFrame()
 
-# Streamlit app layout
+# ─── Streamlit App Layout ───
 st.set_page_config(page_title="PulseReveal Dashboard", page_icon="📈", layout="wide")
 st.title("📈 PulseReveal - Insider Trading Dashboard")
 st.markdown("Stay updated on the latest insider trades.")
 
-# Load data
+# ─── Load and Display Data ───
 df = load_data()
 
-# Show the latest 100 insider trades
-st.subheader("Latest Insider Transactions")
-st.dataframe(df, use_container_width=True)
+if df.empty:
+    st.warning("No data available or failed to fetch data.")
+else:
+    st.subheader("Latest Insider Transactions")
+    st.dataframe(df, use_container_width=True)
 
-# Quick stats
-st.subheader("Quick Stats")
-col1, col2, col3 = st.columns(3)
-col1.metric("Unique Insiders", df['insider'].nunique())
-col2.metric("Unique Issuers", df['issuer'].nunique())
-col3.metric("Total Transactions", len(df))
-
-# IMPORTANT: Add this to run on Railway PORT!
-if __name__ == "__main__":
-    st.run(port=PORT)
+    # ─── Quick Stats ───
+    st.subheader("Quick Stats")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Unique Insiders", df['insider'].nunique())
+    col2.metric("Unique Issuers", df['issuer'].nunique())
+    col3.metric("Total Transactions", len(df))
