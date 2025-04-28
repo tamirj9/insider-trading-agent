@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 # ─────────────────────────────────────────────────────────────
 # CONFIGURATION
-TARGET_DAY = datetime(2025, 4, 23)    # YYYY, M, D — set the specific day to crawl
+TARGET_DAY = datetime.now()           # automatic  date
 TIMEOUT    = 10                       # seconds to wait on each request
 DELAY_IDX  = 1.0                      # pause after fetching the index file
 DELAY_FILE = 0.5                      # pause after parsing each filing
