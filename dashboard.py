@@ -9,19 +9,27 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Connect to your PostgreSQL database
-@st.cache_data(ttl=600)
+@st.cache_data
 def load_data():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         query = """
             SELECT 
+                transaction_id,
                 insider_id,
                 company_id,
                 transaction_date,
                 transaction_code,
-                security_title
+                security_title,
+                transaction_type,
+                shares,
+                price_per_share,
+                total_value,
+                form_type,
+                filing_date,
+                created_at
             FROM transactions
-            ORDER BY transaction_date DESC
+            ORDER BY filing_date DESC
             LIMIT 100
         """
         df = pd.read_sql_query(query, conn)
@@ -40,7 +48,9 @@ st.markdown("Stay updated on the latest insider trades.")
 df = load_data()
 
 # Show the latest 100 insider trades
-if not df.empty:
+if df.empty:
+    st.warning("No data available or failed to fetch data.")
+else:
     st.subheader("Latest Insider Transactions")
     st.dataframe(df, use_container_width=True)
 
@@ -50,5 +60,3 @@ if not df.empty:
     col1.metric("Unique Insiders", df['insider_id'].nunique())
     col2.metric("Unique Companies", df['company_id'].nunique())
     col3.metric("Total Transactions", len(df))
-else:
-    st.warning("No data available or failed to fetch data.")
