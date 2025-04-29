@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Connect to PostgreSQL
+# Connect to PostgreSQL and load data
 @st.cache_data
 def load_data():
     conn = psycopg2.connect(DATABASE_URL)
@@ -30,7 +30,7 @@ def load_data():
     df = pd.read_sql_query(query, conn)
     conn.close()
     
-    # Rename for user-friendly display
+    # Rename columns for display
     df.rename(columns={
         'insider_name': 'Insider',
         'issuer_name': 'Company',
@@ -40,37 +40,38 @@ def load_data():
         'price_per_share': 'Price ($)',
         'total_value': 'Amount ($)'
     }, inplace=True)
-    
-    # Ensure proper timestamp format
+
     df['Date'] = pd.to_datetime(df['Date'])
     return df
 
-# ───── Streamlit Setup ─────
+# Streamlit layout
 st.set_page_config(page_title="PulseReveal Dashboard", page_icon="📈", layout="wide")
 st.title("📈 PulseReveal - Insider Trading Dashboard")
 st.markdown("Stay updated on the latest insider trades.")
 
-# ───── Load and Filter Data ─────
+# Load data
 df = load_data()
+
+# Sidebar filters
 st.sidebar.header("🔎 Filter Options")
 
-# 📅 Date Range Filter
-start_date = st.sidebar.date_input("Start Date", value=df['Date'].min().date())
-end_date = st.sidebar.date_input("End Date", value=df['Date'].max().date())
+# 📅 Timeframe
+start_date = pd.to_datetime(st.sidebar.date_input("Start Date", value=df['Date'].min().date()))
+end_date = pd.to_datetime(st.sidebar.date_input("End Date", value=df['Date'].max().date()))
 
-# 🛒 Shares Filter
+# 🛒 Minimum Shares
 min_shares = st.sidebar.slider("Minimum Shares", 0, int(df['Shares'].max()), 0)
 
-# 💰 Amount Filter
+# 💰 Minimum Amount
 min_amount = st.sidebar.slider("Minimum Amount ($)", 0, int(df['Amount ($)'].max()), 0)
 
-# 🔍 Search Filter
+# 🔍 Search
 search_term = st.sidebar.text_input("Search Insider or Company")
 
-# ⛏️ Apply Filters
+# Apply filters
 filtered_df = df[
-    (df['Date'].dt.date >= start_date) &
-    (df['Date'].dt.date <= end_date) &
+    (df['Date'] >= start_date) &
+    (df['Date'] <= end_date) &
     (df['Shares'] >= min_shares) &
     (df['Amount ($)'] >= min_amount)
 ]
@@ -81,16 +82,16 @@ if search_term:
         filtered_df['Company'].str.contains(search_term, case=False, na=False)
     ]
 
-# ───── Display Results ─────
+# Display results
 st.subheader("📋 Insider Transactions")
 
 if not filtered_df.empty:
     st.dataframe(filtered_df, use_container_width=True)
-    st.download_button("📥 Download Filtered CSV", filtered_df.to_csv(index=False), "insider_trades.csv", "text/csv")
+    st.download_button("📥 Download CSV", filtered_df.to_csv(index=False), "insider_trades.csv", "text/csv")
 else:
     st.warning("No transactions match your filters.")
 
-# ───── Quick Stats ─────
+# Quick Stats
 st.subheader("📊 Quick Stats")
 col1, col2, col3 = st.columns(3)
 col1.metric("Unique Insiders", filtered_df['Insider'].nunique())
