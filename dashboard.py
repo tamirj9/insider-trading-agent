@@ -59,11 +59,21 @@ st.sidebar.header("🔎 Filter Options")
 start_date = pd.to_datetime(st.sidebar.date_input("Start Date", value=df['Date'].min().date()))
 end_date = pd.to_datetime(st.sidebar.date_input("End Date", value=df['Date'].max().date()))
 
-# 🛒 Minimum Shares
-min_shares = st.sidebar.slider("Minimum Shares", 0, int(df['Shares'].max()), 0)
+# 🛒 Shares Range
+min_shares, max_shares = st.sidebar.slider(
+    "Shares Range",
+    int(df['Shares'].min()),
+    int(df['Shares'].max()),
+    (int(df['Shares'].min()), int(df['Shares'].max()))
+)
 
-# 💰 Minimum Amount
-min_amount = st.sidebar.slider("Minimum Amount ($)", 0, int(df['Amount ($)'].max()), 0)
+# 💰 Amount Range
+min_amount, max_amount = st.sidebar.slider(
+    "Amount Range ($)",
+    int(df['Amount ($)'].min()),
+    int(df['Amount ($)'].max()),
+    (int(df['Amount ($)'].min()), int(df['Amount ($)'].max()))
+)
 
 # 🔍 Search
 search_term = st.sidebar.text_input("Search Insider or Company")
@@ -73,7 +83,9 @@ filtered_df = df[
     (df['Date'] >= start_date) &
     (df['Date'] <= end_date) &
     (df['Shares'] >= min_shares) &
-    (df['Amount ($)'] >= min_amount)
+    (df['Shares'] <= max_shares) &
+    (df['Amount ($)'] >= min_amount) &
+    (df['Amount ($)'] <= max_amount)
 ]
 
 if search_term:
