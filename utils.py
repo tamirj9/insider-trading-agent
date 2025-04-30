@@ -1,9 +1,11 @@
-import requests
 import os
+import requests
+import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# === GPT SUMMARIZATION ===
 def generate_gpt_summary(text):
     headers = {
         "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
@@ -11,11 +13,11 @@ def generate_gpt_summary(text):
     }
 
     data = {
-        "model": "meta-llama/llama-2-70b-chat",
+        "model": "mistralai/mistral-7b-instruct",  # ✅ Free, fast, and available
         "messages": [
             {
                 "role": "user",
-                "content": f"Summarize the following insider trading data:\n\n{text}"
+                "content": f"Summarize the following insider trading cluster data:\n\n{text}"
             }
         ]
     }
@@ -24,23 +26,32 @@ def generate_gpt_summary(text):
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
         result = response.json()
 
-        # ✅ Safely access content
-        return result["choices"][0]["message"]["content"]
+        if "choices" in result and result["choices"]:
+            return result["choices"][0]["message"]["content"]
+        elif "error" in result:
+            return f"⚠️ GPT Summary failed: {result['error'].get('message', 'Unknown error')}"
+        else:
+            return "⚠️ GPT Summary failed: Unexpected response format"
+
     except Exception as e:
-        print(f"⚠️ GPT Summary failed: {e}")
         return f"⚠️ GPT Summary failed: {e}"
 
-
+# === CLUSTER ALERT DETECTION ===
 def detect_cluster_alerts(df):
     alerts = []
     grouped = df.groupby(["Date", "Company"])
+
     for (date, company), group in grouped:
-        if group["Amount ($)"].sum() > 1_000_000 and group["Insider"].nunique() > 2:
+        total_amount = group["Amount ($)"].sum()
+        unique_insiders = group["Insider"].nunique()
+
+        if total_amount > 500_000 and unique_insiders >= 3:
             alerts.append({
                 "Date": date,
                 "Company": company,
-                "Total Amount": group["Amount ($)"].sum(),
+                "Total Amount": total_amount,
                 "Insiders": group["Insider"].unique().tolist(),
                 "Count": len(group)
             })
+
     return alerts
