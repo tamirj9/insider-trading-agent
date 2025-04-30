@@ -1,4 +1,3 @@
-# utils.py
 import requests
 import os
 from dotenv import load_dotenv
@@ -10,6 +9,7 @@ def generate_gpt_summary(text):
         "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
         "Content-Type": "application/json"
     }
+
     data = {
         "model": "meta-llama/llama-2-70b-chat",
         "messages": [
@@ -24,14 +24,12 @@ def generate_gpt_summary(text):
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
         result = response.json()
 
-        # ✅ Safely check that 'choices' exists
-        if "choices" in result and result["choices"]:
-            return result["choices"][0]["message"]["content"]
-        else:
-            raise ValueError(f"No valid GPT response: {result}")
+        # ✅ Safely access content
+        return result["choices"][0]["message"]["content"]
     except Exception as e:
         print(f"⚠️ GPT Summary failed: {e}")
         return f"⚠️ GPT Summary failed: {e}"
+
 
 def detect_cluster_alerts(df):
     alerts = []
