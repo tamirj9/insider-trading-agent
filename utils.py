@@ -1,51 +1,53 @@
-import os
 import requests
-import pandas as pd
+import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-# === GPT SUMMARIZATION ===
+# Fetch API key from env
+API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+# GPT Model config
+GPT_MODEL = "meta-llama/llama-2-70b-chat"
+GPT_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 def generate_gpt_summary(text):
+    if not API_KEY:
+        return "⚠️ GPT Summary failed: No auth credentials found"
+
     headers = {
-        "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+        "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
-
     data = {
-        "model": "mistralai/mistral-7b-instruct",  # ✅ Free, fast, and available
+        "model": GPT_MODEL,
         "messages": [
             {
                 "role": "user",
-                "content": f"Summarize the following insider trading cluster data:\n\n{text}"
+                "content": f"Summarize the following insider trading data:
+\n\n{text}"
             }
         ]
     }
 
     try:
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+        response = requests.post(GPT_API_URL, headers=headers, json=data)
         result = response.json()
-
         if "choices" in result and result["choices"]:
             return result["choices"][0]["message"]["content"]
-        elif "error" in result:
-            return f"⚠️ GPT Summary failed: {result['error'].get('message', 'Unknown error')}"
         else:
-            return "⚠️ GPT Summary failed: Unexpected response format"
-
+            return f"⚠️ GPT Summary failed: {result}"
     except Exception as e:
         return f"⚠️ GPT Summary failed: {e}"
 
-# === CLUSTER ALERT DETECTION ===
 def detect_cluster_alerts(df):
     alerts = []
     grouped = df.groupby(["Date", "Company"])
-
     for (date, company), group in grouped:
         total_amount = group["Amount ($)"].sum()
         unique_insiders = group["Insider"].nunique()
-
-        if total_amount > 500_000 and unique_insiders >= 3:
+        if total_amount >= 500000 and unique_insiders >= 3:
             alerts.append({
                 "Date": date,
                 "Company": company,
@@ -53,5 +55,4 @@ def detect_cluster_alerts(df):
                 "Insiders": group["Insider"].unique().tolist(),
                 "Count": len(group)
             })
-
     return alerts
