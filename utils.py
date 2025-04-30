@@ -3,22 +3,19 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 def generate_gpt_summary(text):
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        return "⚠️ GPT Summary failed: No API key found"
-
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": "meta-llama/llama-2-70b-chat",
+        "model": "mistralai/mistral-7b-instruct",  # ✅ Free and available on OpenRouter
         "messages": [
             {
                 "role": "user",
-                "content": f"Summarize the following insider trading cluster data:\n\n{text}"
+                "content": f"Summarize the following insider trading data:\n\n{text}"
             }
         ]
     }
@@ -26,19 +23,16 @@ def generate_gpt_summary(text):
     try:
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
         result = response.json()
-
-        if "choices" in result and result["choices"]:
-            return result["choices"][0]["message"]["content"]
-        else:
-            return f"⚠️ GPT Summary failed: {result}"
+        return result["choices"][0]["message"]["content"]
     except Exception as e:
+        print(f"⚠️ GPT Summary failed: {e}")
         return f"⚠️ GPT Summary failed: {e}"
 
 def detect_cluster_alerts(df):
     alerts = []
     grouped = df.groupby(["Date", "Company"])
     for (date, company), group in grouped:
-        if group["Amount ($)"].sum() > 1_000_000 and group["Insider"].nunique() >= 3:
+        if group["Amount ($)"].sum() > 1_000_000 and group["Insider"].nunique() > 2:
             alerts.append({
                 "Date": date,
                 "Company": company,
