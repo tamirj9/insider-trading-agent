@@ -1,3 +1,4 @@
+# utils.py
 import requests
 import os
 from dotenv import load_dotenv
@@ -22,7 +23,12 @@ def generate_gpt_summary(text):
     try:
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
         result = response.json()
-        return result["choices"][0]["message"]["content"]
+
+        # ✅ Safely check that 'choices' exists
+        if "choices" in result and result["choices"]:
+            return result["choices"][0]["message"]["content"]
+        else:
+            raise ValueError(f"No valid GPT response: {result}")
     except Exception as e:
         print(f"⚠️ GPT Summary failed: {e}")
         return f"⚠️ GPT Summary failed: {e}"
