@@ -3,15 +3,21 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+# Debug: Print the loaded key to confirm it's working
+print("Loaded OPENROUTER_API_KEY:", os.getenv("OPENROUTER_API_KEY"))
 
 def generate_gpt_summary(text):
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        return "⚠️ GPT Summary failed: No API key provided"
+
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": "mistralai/mistral-7b-instruct",  # ✅ Free and available on OpenRouter
+        "model": "mistralai/mistral-7b-instruct",
         "messages": [
             {
                 "role": "user",
