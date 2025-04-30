@@ -4,6 +4,7 @@ import psycopg2
 import os
 from dotenv import load_dotenv
 from utils import generate_gpt_summary, detect_cluster_alerts
+import plotly.express as px
 
 # Load environment variables
 load_dotenv()
@@ -119,8 +120,6 @@ col2.metric("Unique Companies", df['Company'].nunique())
 col3.metric("Total Trades", len(df))
 
 # Bar charts
-import plotly.express as px
-
 st.subheader("📈 Transaction Volume")
 vol_chart = px.bar(
     df.groupby(df['Date'].dt.date)['Amount ($)'].sum().reset_index(),
@@ -149,8 +148,13 @@ st.subheader("🚨 Cluster Alerts")
 alerts = detect_cluster_alerts(df)
 if alerts:
     for a in alerts:
-        st.markdown(f"<div style='background-color:#e8f1ff;padding:10px;border-radius:8px;'>
-            <strong>{a['Date']}:</strong> {a['Company']} - ${a['Total Amount']:,.0f} from {a['Count']} trades
-        </div>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div style='background-color:#e8f1ff;padding:10px;border-radius:8px;'>
+                <strong>{a['Date']}:</strong> {a['Company']} - ${a['Total Amount']:,.0f} from {a['Count']} trades
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 else:
     st.info("No cluster alerts detected.")
