@@ -1,24 +1,34 @@
 import streamlit as st
 import pandas as pd
-import psycopg2
+import numpy as np
+import datetime
 import plotly.express as px
-from dotenv import load_dotenv
-import os
 from utils import generate_gpt_summary, detect_cluster_alerts
 from top10 import display_top10_charts
+import psycopg2
+import os
+from dotenv import load_dotenv
 
 load_dotenv()
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Load data from PostgreSQL
+@st.cache_data(show_spinner=False)
 def load_data(limit=1000):
     conn = psycopg2.connect(DATABASE_URL)
     query = f'''
-        SELECT t.transaction_id, i.name AS insider_name, c.company_name AS company_name,
-               t.transaction_code AS transaction_type,
-               t.transaction_date, t.filing_date, t.reported_date,
-               t.security_title, t.transaction_type AS type,
-               t.shares, t.price_per_share, t.total_value
+        SELECT 
+            t.transaction_id, 
+            i.name AS insider_name, 
+            c.company_name AS company_name, 
+            t.transaction_type, 
+            t.transaction_date, 
+            t.filing_date,
+            t.created_at AS reported_date,
+            t.security_title, 
+            t.shares, 
+            t.price_per_share, 
+            t.total_value
         FROM transactions t
         JOIN insiders i ON t.insider_id = i.insider_id
         JOIN issuers c ON t.company_id = c.company_id
@@ -27,97 +37,66 @@ def load_data(limit=1000):
     '''
     df = pd.read_sql_query(query, conn)
     conn.close()
+
+    df['Trade Date'] = pd.to_datetime(df['transaction_date'])
+    df['Filing Date'] = pd.to_datetime(df['filing_date'])
+    df['Reported Date'] = pd.to_datetime(df['reported_date'])
+    df['Amount ($)'] = df['total_value']
+    df['Shares'] = df['shares']
+    df['Price ($)'] = df['price_per_share']
+    df['Company'] = df['company_name']
+    df['Insider'] = df['insider_name']
+    df['Type'] = df['transaction_type']
     return df
 
 st.set_page_config(layout="wide")
-st.title("📈 PulseReveal - Insider Trading Dashboard")
-st.caption("Stay updated on the latest insider trades.")
+st.title("📊 PulseReveal - Insider Trading Dashboard")
 
-# Load data
-row_limit = st.sidebar.selectbox("Number of transactions to show", [100, 500, 1000], index=2)
+row_limit = st.sidebar.selectbox("Number of Transactions to Load", [100, 500, 1000, 5000], index=2)
 df = load_data(limit=row_limit)
 
-# Convert dates
-for col in ["transaction_date", "filing_date", "reported_date"]:
-    df[col] = pd.to_datetime(df[col], errors='coerce')
-
-# Rename columns
-column_renames = {
-    "insider_name": "Insider",
-    "company_name": "Company",
-    "transaction_type": "Type",
-    "transaction_date": "Trade Date",
-    "filing_date": "Filing Date",
-    "reported_date": "Reported Date",
-    "security_title": "Security",
-    "shares": "Shares",
-    "price_per_share": "Price ($)",
-    "total_value": "Amount ($)"
-}
-df.rename(columns=column_renames, inplace=True)
-
 # Sidebar filters
-start_date = st.sidebar.date_input("Start Date", value=df['Reported Date'].min().date())
-end_date = st.sidebar.date_input("End Date", value=df['Reported Date'].max().date())
+min_reported = df['Reported Date'].min()
+default_start = min_reported.date() if pd.notnull(min_reported) else datetime.date.today() - datetime.timedelta(days=7)
+start_date = st.sidebar.date_input("Start Date", value=default_start)
+end_date = st.sidebar.date_input("End Date", value=datetime.date.today())
 
-min_shares = int(df["Shares"].min())
-max_shares = int(df["Shares"].max())
-shares_range = st.sidebar.slider("Shares Range", min_value=min_shares, max_value=max_shares,
-                                  value=(min_shares, max_shares))
+company_filter = st.sidebar.text_input("Search Company")
+insider_filter = st.sidebar.text_input("Search Insider")
 
-min_amount = int(df["Amount ($)"].min())
-max_amount = int(df["Amount ($)"].max())
-amount_range = st.sidebar.slider("Amount Range ($)", min_value=min_amount, max_value=max_amount,
-                                  value=(min_amount, max_amount))
+df_filtered = df[(df['Reported Date'].dt.date >= start_date) & (df['Reported Date'].dt.date <= end_date)]
 
-search_term = st.sidebar.text_input("Search Insider or Company")
-group_by = st.sidebar.selectbox("Group By", ["None", "Insider", "Company"])
+if company_filter:
+    df_filtered = df_filtered[df_filtered['Company'].str.contains(company_filter, case=False)]
+if insider_filter:
+    df_filtered = df_filtered[df_filtered['Insider'].str.contains(insider_filter, case=False)]
 
-# Filtered data
-filtered_df = df[(df['Reported Date'].dt.date >= pd.to_datetime(start_date).date()) &
-                 (df['Reported Date'].dt.date <= pd.to_datetime(end_date).date()) &
-                 (df['Shares'].between(*shares_range)) &
-                 (df['Amount ($)'].between(*amount_range))]
-
-if search_term:
-    filtered_df = filtered_df[
-        filtered_df['Insider'].str.contains(search_term, case=False, na=False) |
-        filtered_df['Company'].str.contains(search_term, case=False, na=False)
-    ]
-
-# Show charts
-st.subheader("📊 Transaction Volume by Day")
-daily_volume = filtered_df.groupby(filtered_df['Reported Date'].dt.date)["Amount ($)"].sum().reset_index()
-fig = px.line(daily_volume, x='Reported Date', y='Amount ($)', title="Transaction Volume by Day")
+# Transaction Volume by Day
+st.subheader("📈 Transaction Volume by Day")
+daily_volume = df_filtered.groupby(df_filtered['Reported Date'].dt.date)['Amount ($)'].sum().reset_index()
+fig = px.line(daily_volume, x='Reported Date', y='Amount ($)', title='Transaction Volume by Day')
 st.plotly_chart(fig, use_container_width=True)
 
-# Top 10 Companies & Insiders
-display_top10_charts(filtered_df)
-
-# GPT Summaries by cluster
+# GPT Summary of Cluster Alerts
 st.subheader("🧠 GPT Summary of Cluster Alerts")
-cluster_alerts = detect_cluster_alerts(filtered_df)
-
-if cluster_alerts:
+cluster_alerts = detect_cluster_alerts(df_filtered)
+if not cluster_alerts:
+    st.info("No cluster alerts detected in selected date range.")
+else:
     for alert in cluster_alerts:
         with st.expander(f"📌 {alert['Company']} — {alert['Date']} — ${alert['Total Amount']:,}"):
             insiders = ", ".join(alert['Insiders'])
             st.markdown(f"**Insiders:** {insiders}")
-            st.markdown("Generating GPT Summary...")
-            summary = generate_gpt_summary(
-                f"On {alert['Date']}, the following insiders traded in {alert['Company']} totaling ${alert['Total Amount']:,}: {insiders}"
-            )
+            st.write("Generating GPT Summary...")
+            summary = generate_gpt_summary(f"Company: {alert['Company']}\nDate: {alert['Date']}\nAmount: ${alert['Total Amount']:,}\nInsiders: {insiders}")
             st.success(summary)
-else:
-    st.info("No cluster alerts detected in the selected date range.")
+
+# Top 10 Charts
+display_top10_charts(df_filtered)
 
 # Transactions Table
 st.subheader("📋 Transactions")
-filtered_df.reset_index(drop=True, inplace=True)
-filtered_df.index += 1
-
-format_dollar = lambda x: f"${x:,.0f}" if pd.notnull(x) else ""
-filtered_df["Amount ($)"] = filtered_df["Amount ($)"].apply(format_dollar)
-filtered_df["Price ($)"] = filtered_df["Price ($)"].apply(lambda x: f"${x:.2f}" if pd.notnull(x) else "")
-
-st.dataframe(filtered_df)
+display_columns = ['Insider', 'Company', 'Type', 'Trade Date', 'Filing Date', 'Reported Date', 'Shares', 'Price ($)', 'Amount ($)', 'security_title']
+df_display = df_filtered[display_columns].copy()
+df_display.index += 1
+st.dataframe(df_display, use_container_width=True)
