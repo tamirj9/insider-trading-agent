@@ -10,7 +10,7 @@ def generate_gpt_summary(text):
         "Content-Type": "application/json"
     }
     data = {
-        "model": "meta-llama/llama-2-70b-chat",
+        "model": "openai/gpt-3.5-turbo",
         "messages": [
             {
                 "role": "user",
@@ -22,7 +22,12 @@ def generate_gpt_summary(text):
     try:
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
         result = response.json()
-        return result["choices"][0]["message"]["content"]
+
+        if "choices" in result:
+            return result["choices"][0]["message"]["content"]
+        else:
+            print("❌ Unexpected GPT response:", result)
+            return "⚠️ GPT Summary failed: Unexpected API response format."
     except Exception as e:
         print(f"⚠️ GPT Summary failed: {e}")
         return f"⚠️ GPT Summary failed: {e}"
