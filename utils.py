@@ -4,42 +4,35 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def generate_gpt_summary(text: str) -> str:
+def generate_gpt_summary(text):
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        return "⚠️ GPT API key is missing."
+        return "⚠️ GPT error: API key is missing"
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
 
-    payload = {
+    data = {
         "model": "openai/gpt-3.5-turbo",
         "messages": [
-            {"role": "system", "content": "You are a financial analyst. Summarize the following insider trading activity in plain English."},
-            {"role": "user", "content": text}
+            {"role": "user", "content": f"Summarize the following insider trading cluster:\n\n{text}"}
         ]
     }
 
     try:
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
         result = response.json()
 
-        # Handle structured errors
-        if "error" in result:
-            print("⚠️ GPT API error:", result["error"])
-            return f"⚠️ GPT error: {result['error'].get('message', 'Unknown error')}"
-
-        # Expected output format
-        if "choices" in result and len(result["choices"]) > 0:
+        if "choices" in result and result["choices"]:
             return result["choices"][0]["message"]["content"]
         else:
-            print("⚠️ Unexpected API response:", result)
-            return "⚠️ GPT Summary failed: Unexpected response format."
+            return f"⚠️ GPT Summary failed: Unexpected API response format.\n{result}"
+
     except Exception as e:
-        print("⚠️ Exception during GPT summary:", str(e))
         return f"⚠️ GPT Summary failed: {e}"
+
 
 def detect_cluster_alerts(df):
     alerts = []
