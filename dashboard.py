@@ -13,7 +13,7 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Load data from PostgreSQL
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_data(limit=1000):
     conn = psycopg2.connect(DATABASE_URL)
     query = f'''
@@ -84,11 +84,11 @@ if not cluster_alerts:
     st.info("No cluster alerts detected in selected date range.")
 else:
     for alert in cluster_alerts:
-        with st.expander(f"📌 {alert['Company']} — {alert['Date']} — ${alert['Total Amount']:,}"):
+        with st.expander(f"📌 {alert['Company']} — {alert['Date']} — ${alert['Total Amount']:,.0f}"):
             insiders = ", ".join(alert['Insiders'])
             st.markdown(f"**Insiders:** {insiders}")
             st.write("Generating GPT Summary...")
-            summary = generate_gpt_summary(f"Company: {alert['Company']}\nDate: {alert['Date']}\nAmount: ${alert['Total Amount']:,}\nInsiders: {insiders}")
+            summary = generate_gpt_summary(f"Company: {alert['Company']}\nDate: {alert['Date']}\nAmount: ${alert['Total Amount']:,.0f}\nInsiders: {insiders}")
             st.success(summary)
 
 # Top 10 Charts
