@@ -1,75 +1,64 @@
-# utils.py (updated to cache GPT summaries and reduce unnecessary API calls)
-
 import requests
 import os
-import hashlib
-import json
+import pandas as pd
 from dotenv import load_dotenv
-from datetime import datetime
 
 load_dotenv()
 
-CACHE_DIR = ".gpt_cache"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-HEADERS = {
-    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-    "Content-Type": "application/json"
-}
 
-# Ensure cache folder exists
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-def _get_cache_filename(text: str) -> str:
-    hash_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return os.path.join(CACHE_DIR, f"summary_{hash_digest}.json")
-
-def generate_gpt_summary(text: str) -> str:
-    if not OPENROUTER_API_KEY:
-        return "⚠️ GPT error: API key not set"
-
-    cache_path = _get_cache_filename(text)
-    if os.path.exists(cache_path):
-        with open(cache_path, 'r') as f:
-            return json.load(f)["summary"]
-
-    payload = {
+# --- GPT Summary ---
+def generate_gpt_summary(text):
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
         "model": "openai/gpt-3.5-turbo",
         "messages": [
-            {"role": "user", "content": f"Summarize the following insider trading cluster:\n\n{text}"}
+            {
+                "role": "user",
+                "content": f"Summarize the following insider trading cluster:\n\n{text}"
+            }
         ]
     }
-
     try:
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=HEADERS, json=payload)
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
         result = response.json()
-
-        if "choices" not in result:
-            raise ValueError(f"Unexpected API response format. {result}")
-
-        summary = result["choices"][0]["message"]["content"]
-
-        # Save to cache
-        with open(cache_path, 'w') as f:
-            json.dump({"summary": summary}, f)
-
-        return summary
-
+        if "choices" in result:
+            return result["choices"][0]["message"]["content"]
+        else:
+            raise ValueError(f"Unexpected API response format: {result}")
     except Exception as e:
+        print(f"⚠️ GPT Summary failed: {e}")
         return f"⚠️ GPT Summary failed: {e}"
 
-
+# --- Cluster Alert Detection ---
 def detect_cluster_alerts(df):
     alerts = []
-    grouped = df.groupby(["Date", "Company"])
+
+    # Rename column if needed for grouping
+    if "Trade Date" in df.columns:
+        df_grouped = df.copy()
+        df_grouped.rename(columns={"Trade Date": "Date"}, inplace=True)
+    else:
+        print("❌ 'Trade Date' not found in dataframe")
+        return []
+
+    grouped = df_grouped.groupby(["Date", "Company"])
 
     for (date, company), group in grouped:
-        if group["Amount ($)"].sum() > 500_000 and group["Insider"].nunique() >= 3:
+        total_amount = group["Amount ($)"].sum()
+        unique_insiders = group["Insider"].nunique()
+
+        if total_amount >= 500_000 and unique_insiders >= 3:
             alerts.append({
                 "Date": date,
                 "Company": company,
-                "Total Amount": group["Amount ($)"].sum(),
+                "Total Amount": total_amount,
                 "Insiders": group["Insider"].unique().tolist(),
                 "Count": len(group),
-                "Text": group.to_string(index=False)
+                "Trades": group.to_dict(orient="records")
             })
+
     return alerts
