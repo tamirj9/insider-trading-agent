@@ -1,23 +1,22 @@
 import os
 import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import pandas as pd
 import psycopg2
 from dotenv import load_dotenv
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-# Load environment variables
+# ─── Load Environment ───
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
-# Connect to the database
+# ─── Connect to DB ───
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
-# ─────────────────────────────────────────────────────────────
-
+# ─── Main Cleaning Function ───
 def clean_and_transfer():
     print("🔄 Fetching raw transactions...")
     query = """
@@ -58,21 +57,27 @@ def clean_and_transfer():
         if result:
             insider_id = result[0]
         else:
-            cur.execute("INSERT INTO insiders (name, company_id, relationship) VALUES (%s, %s, %s) RETURNING insider_id", (insider_name, company_id, "Unknown"))
+            cur.execute("""
+                INSERT INTO insiders (name, company_id, relationship)
+                VALUES (%s, %s, %s)
+                RETURNING insider_id
+            """, (insider_name, company_id, "Unknown"))
             insider_id = cur.fetchone()[0]
 
         # Insert transaction
         cur.execute("""
             INSERT INTO transactions (
                 insider_id, company_id, transaction_date, transaction_code,
-                security_title, transaction_type, shares, price_per_share, total_value, filing_date
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                security_title, transaction_type, shares, price_per_share,
+                total_value, reported_date
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """, (
             insider_id, company_id, transaction_date, transaction_code,
             security_title, "Purchase/Sale/Other", shares, price, shares * price
         ))
 
-        # Mark as processed
+        # Delete from raw
         cur.execute("DELETE FROM raw_transactions WHERE id = %s", (row['id'],))
 
         processed += 1
@@ -83,17 +88,17 @@ def clean_and_transfer():
     if processed > 0:
         send_email(processed)
 
-# ─────────────────────────────────────────────────────────────
-
+# ─── Email Alert ───
 def send_email(count):
-    subject = f"✅ Insider Trades Processed: {count} New Transactions"
-    body = f"Today, {count} insider trades were cleaned and added to the database successfully.\n\n- Your automated insider trading crawler"
-
+    subject = f"✅ {count} Insider Trades Cleaned"
+    body = (
+        f"🎯 {count} insider trades were successfully cleaned and stored in the database.\n\n"
+        f"Check your dashboard or logs for details."
+    )
     msg = MIMEMultipart()
     msg['From'] = EMAIL_USER
     msg['To'] = EMAIL_USER
     msg['Subject'] = subject
-
     msg.attach(MIMEText(body, 'plain'))
 
     try:
@@ -102,13 +107,14 @@ def send_email(count):
         server.login(EMAIL_USER, EMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print("📧 Notification email sent!")
+        print("📧 Notification email sent.")
     except Exception as e:
         print(f"⚠️ Failed to send email: {e}")
 
-# ─────────────────────────────────────────────────────────────
-
+# ─── Entry ───
 if __name__ == "__main__":
-    clean_and_transfer()
-    cur.close()
-    conn.close()
+    try:
+        clean_and_transfer()
+    finally:
+        cur.close()
+        conn.close()
