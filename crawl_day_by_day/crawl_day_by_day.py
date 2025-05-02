@@ -4,12 +4,12 @@ import requests
 import psycopg2
 import pandas as pd
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import datetime
 from dotenv import load_dotenv
 import subprocess
 
 # ─── CONFIGURATION ───
-TARGET_DAY = datetime.now() - timedelta(days=1)  # crawl yesterday's data
+TARGET_DAY = datetime.now()
 TIMEOUT = 10
 DELAY_IDX = 1.0
 DELAY_FILE = 0.5
@@ -157,37 +157,31 @@ def connect_db():
         print(f"⚠️ Database connection error: {e}")
         raise
 
-# ─── MAIN ───
-if __name__ == '__main__':
-    try:
-        connect_db()
-        print(f"── Crawling {TARGET_DAY.strftime('%Y-%m-%d')} (raw import) ──")
-        idxs = fetch_index(TARGET_DAY)
-        if not idxs:
-            print(f"⚠️ No index for {TARGET_DAY.date()}")
-        else:
-            print(f"📄 {len(idxs)} filings found for {TARGET_DAY.date()}")
-            inserted = 0
-            for path in idxs:
-                df = parse_filing(path)
-                if df is not None:
-                    upsert_trades(df)
-                    print(f"✅ Inserted {len(df)} rows from {path}")
-                    inserted += 1
-                else:
-                    print(f"▶️ No transactions in {path}")
-                time.sleep(DELAY_FILE)
-            print(f"🏁 Imported {inserted} filings for {TARGET_DAY.date()}")
-    except Exception as e:
-        print(f"⚠️ Fatal error: {e}")
-    finally:
-        if conn:
-            if cur:
-                cur.close()
-            conn.close()
-            print("✅ Database connection closed")
+def run(target_day: datetime = datetime.now()):
+    connect_db()
+    print(f"── Crawling {target_day.strftime('%Y-%m-%d')} (raw import) ──")
+    idxs = fetch_index(target_day)
+    if not idxs:
+        print(f"⚠️ No index for {target_day.date()}")
+    else:
+        print(f"📄 {len(idxs)} filings found for {target_day.date()}")
+        inserted = 0
+        for path in idxs:
+            df = parse_filing(path)
+            if df is not None:
+                upsert_trades(df)
+                print(f"✅ Inserted {len(df)} rows from {path}")
+                inserted += 1
+            else:
+                print(f"▶️ No transactions in {path}")
+            time.sleep(DELAY_FILE)
+        print(f"🏋️ Imported {inserted} filings for {target_day.date()}")
+    if conn:
+        if cur:
+            cur.close()
+        conn.close()
+        print("✅ Database connection closed")
 
-    # ─── TRIGGER CLEAN TRANSFER ───
     try:
         print("🔄 Running clean transfer after crawling...")
         subprocess.run(["python3", "clean_transfer/clean_transfer.py"], check=True)
@@ -196,3 +190,7 @@ if __name__ == '__main__':
         print(f"⚠️ Clean transfer subprocess error: {e}")
     except Exception as e:
         print(f"⚠️ Unexpected clean transfer error: {e}")
+
+# ─── MAIN ENTRY POINT ───
+if __name__ == "__main__":
+    run()
